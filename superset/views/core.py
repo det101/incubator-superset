@@ -1130,10 +1130,10 @@ class Superset(BaseSupersetView):
             form_data=form_data,
             force=force,
         )
-
-        return self.generate_json(
+        re = self.generate_json(
             viz_obj, csv=csv, query=query, results=results, samples=samples
         )
+        return re
 
     @event_logger.log_this
     @has_access
@@ -2876,6 +2876,7 @@ class Superset(BaseSupersetView):
             .filter_by(user_id=g.user.get_id())
             .scalar()
         )
+
         if welcome_dashboard_id:
             return self.dashboard(str(welcome_dashboard_id))
 

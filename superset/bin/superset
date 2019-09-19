@@ -20,7 +20,7 @@ from flask.cli import FlaskGroup
 
 from superset.cli import create_app
 
-
+# FlaskGroup(create_app)
 @click.group(cls=FlaskGroup, create_app=create_app)
 def cli():
     """This is a management script for the Superset application."""

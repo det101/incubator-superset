@@ -2366,11 +2366,11 @@ class DeckPathViz(BaseDeckGLViz):
         "polyline": polyline.decode,
         "geohash": geohash_to_json,
     }
-
+    #根据用户请求的formdata生成查询对象
     def query_obj(self):
         fd = self.form_data
         self.is_timeseries = fd.get("time_grain_sqla") or fd.get("granularity")
-        d = super().query_obj()
+        d = super().query_obj() #父级处理好后，修改
         self.metric = fd.get("metric")
         line_col = fd.get("line_column")
         if d["metrics"]:

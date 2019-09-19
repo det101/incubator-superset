@@ -84,10 +84,12 @@ def get_viz(
         return slc.get_viz()
     else:
         viz_type = form_data.get("viz_type", "table")
+        #取到表
         datasource = ConnectorRegistry.get_datasource(
             datasource_type, datasource_id, db.session
         )
         viz_obj = viz.viz_types[viz_type](datasource, form_data=form_data, force=force)
+
         return viz_obj
 
 

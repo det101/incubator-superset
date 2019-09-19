@@ -43,7 +43,7 @@ const {
   measure = false,
   analyzeBundle = false,
 } = parsedArgs;
-
+console.log('devserverPort', devserverPort);
 const isDevMode = mode !== 'production';
 
 const plugins = [

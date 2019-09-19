@@ -41,11 +41,13 @@ wtforms_json.init()
 APP_DIR = os.path.dirname(__file__)
 CONFIG_MODULE = os.environ.get("SUPERSET_CONFIG", "superset.config")
 
+
 if not os.path.exists(config.DATA_DIR):
     os.makedirs(config.DATA_DIR)
 
 app = Flask(__name__)
 app.config.from_object(CONFIG_MODULE)
+# config.py
 conf = app.config
 
 #################################################################
@@ -68,6 +70,7 @@ def parse_manifest_json():
 
 
 def get_js_manifest_files(filename):
+    print('filename', filename)
     if app.debug:
         parse_manifest_json()
     entry_files = manifest.get(filename, {})
@@ -106,7 +109,6 @@ def get_manifest():
 # Setup the cache prior to registering the blueprints.
 cache = setup_cache(app, conf.get("CACHE_CONFIG"))
 tables_cache = setup_cache(app, conf.get("TABLE_NAMES_CACHE_CONFIG"))
-
 for bp in conf.get("BLUEPRINTS"):
     try:
         print("Registering blueprint: '{}'".format(bp.name))
@@ -166,7 +168,7 @@ if app.config.get("UPLOAD_FOLDER"):
 for middleware in app.config.get("ADDITIONAL_MIDDLEWARE"):
     app.wsgi_app = middleware(app.wsgi_app)
 
-
+# 入口欢迎页面 重定向
 class MyIndexView(IndexView):
     @expose("/")
     def index(self):

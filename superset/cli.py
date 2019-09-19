@@ -39,7 +39,7 @@ celery_app = utils.get_celery_app(config)
 def create_app(script_info=None):
     return app
 
-
+# 添加到命令 类似 manager.add_command("shell", Shell(make_context=make_shell_context))
 @app.shell_context_processor
 def make_shell_context():
     return dict(app=app, db=db)

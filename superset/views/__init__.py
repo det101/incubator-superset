@@ -16,7 +16,7 @@
 # under the License.
 from . import base  # noqa
 from . import api  # noqa
-from . import core  # noqa
+from . import core  # noqa 主要页面
 from . import sql_lab  # noqa
 from . import dashboard  # noqa
 from . import annotations  # noqa
