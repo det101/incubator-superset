@@ -49,6 +49,7 @@ app = Flask(__name__)
 app.config.from_object(CONFIG_MODULE)
 # config.py
 conf = app.config
+app.config['SESSION_COOKIE_NAME'] = 'test'
 
 #################################################################
 # Handling manifest file logic at app start

@@ -33,8 +33,10 @@ from flask import (
     request,
     Response,
     url_for,
+    session
 )
 from flask_appbuilder import expose
+from flask_appbuilder.api import safe
 from flask_appbuilder.actions import action
 from flask_appbuilder.models.sqla.interface import SQLAInterface
 from flask_appbuilder.security.decorators import has_access, has_access_api
@@ -105,6 +107,22 @@ from .utils import (
     get_datasource_info,
     get_form_data,
     get_viz,
+)
+
+from flask_appbuilder.const import (
+    API_SECURITY_PASSWORD_KEY,
+    API_SECURITY_PROVIDER_KEY,
+    API_SECURITY_USERNAME_KEY,
+    API_SECURITY_VERSION,
+    API_SECURITY_ACCESS_TOKEN_KEY,
+    API_SECURITY_PASSWORD_KEY,
+    API_SECURITY_PROVIDER_DB,
+    API_SECURITY_PROVIDER_KEY,
+    API_SECURITY_PROVIDER_LDAP,
+    API_SECURITY_REFRESH_KEY,
+    API_SECURITY_REFRESH_TOKEN_KEY,
+    API_SECURITY_USERNAME_KEY,
+    API_SECURITY_VERSION,
 )
 
 config = app.config
@@ -717,6 +735,65 @@ appbuilder.add_view_no_menu(R)
 
 class Superset(BaseSupersetView):
     """The base views for Superset!"""
+
+    @expose("/iflogin", methods=["GET"])
+    @safe
+    def iflogin(self):
+        a = 1
+        print(db.session, session)
+        # return self.json_response('not login')
+
+        # isnull = hasattr(session, 'csrf_token')
+        if not session:
+            response = Response()
+            app.session_interface.save_session(app, session, response)
+        csrf = app.jinja_env.globals['csrf_token']()
+        # print('session:', csrf)
+
+        if csrf:
+            myresponse = self.json_response(csrf)
+            myresponse.set_cookie('csrf_token', csrf)
+
+        if not myresponse:
+            myresponse = self.json_response('not login');
+
+        return myresponse;
+
+    @expose("/login2", methods=["POST"])
+    # @safe
+    def login(self):
+        if not request.is_json:
+            return self.json_response(message="Request payload is not JSON")
+        username = request.json.get(API_SECURITY_USERNAME_KEY, None)
+        password = request.json.get(API_SECURITY_PASSWORD_KEY, None)
+        provider = request.json.get(API_SECURITY_PROVIDER_KEY, None)
+        refresh = request.json.get(API_SECURITY_REFRESH_KEY, False)
+        if not username or not password or not provider:
+            return self.json_response(message="Missing required parameter")
+        # AUTH
+        if provider == API_SECURITY_PROVIDER_DB:
+            user = self.appbuilder.sm.auth_user_db(username, password)
+        elif provider == API_SECURITY_PROVIDER_LDAP:
+            user = self.appbuilder.sm.auth_user_ldap(username, password)
+        else:
+            return self.json_response(
+                message="Provider {} not supported".format(provider)
+            )
+        if not user:
+            return self.json_response(401)
+
+        # Identity can be any data that is json serializable
+        resp = dict()
+        # resp[API_SECURITY_ACCESS_TOKEN_KEY] = create_access_token(
+        #     identity=user.id, fresh=True
+        # )
+        # if refresh:
+        #     resp[API_SECURITY_REFRESH_TOKEN_KEY] = create_refresh_token(
+        #         identity=user.id
+        #     )
+        return self.json_response('success')
+
+
 
     @has_access_api
     @expose("/datasources/")

@@ -16,7 +16,7 @@
 # under the License.
 # pylint: disable=R
 from flask import request
-from flask_appbuilder import expose
+from flask_appbuilder import expose, ModelRestApi
 from flask_appbuilder.security.decorators import has_access_api
 import simplejson as json
 
@@ -26,7 +26,8 @@ from superset.legacy import update_time_range
 import superset.models.core as models
 from superset.utils import core as utils
 from .base import api, BaseSupersetView, handle_api_exception
-
+from flask_appbuilder.models.sqla.interface import SQLAInterface
+import superset.models.core as models
 
 class Api(BaseSupersetView):
     @event_logger.log_this
@@ -69,4 +70,27 @@ class Api(BaseSupersetView):
         return json.dumps(form_data)
 
 
+class ExampleModelApi(ModelRestApi):
+    class_permission_name = "CssTemplateAsyncModelView"
+    method_permission_name = {
+        "get_list": "list",
+        "get": "show",
+        "post": "add",
+        "put": "edit",
+        "delete": "delete",
+        "info": "list",
+    }
+    previous_method_permission_name = {
+        "get_list": "access",
+        "get": "access",
+        "post": "access",
+        "put": "access",
+        "delete": "access",
+        "info": "access"
+    }
+    resource_name = 'example'
+    datamodel = SQLAInterface(models.CssTemplate)
+    allow_browser_login = True
+
+appbuilder.add_api(ExampleModelApi)
 appbuilder.add_view_no_menu(Api)
