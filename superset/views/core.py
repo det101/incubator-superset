@@ -735,29 +735,32 @@ appbuilder.add_view_no_menu(R)
 
 class Superset(BaseSupersetView):
     """The base views for Superset!"""
+    route_base = "/superset"
 
-    @expose("/iflogin", methods=["GET"])
+    @expose("/iflogin/", methods=["GET"])
     @safe
     def iflogin(self):
-        a = 1
-        print(db.session, session)
-        # return self.json_response('not login')
 
-        # isnull = hasattr(session, 'csrf_token')
         if not session:
             response = Response()
             app.session_interface.save_session(app, session, response)
+
+        try:
+            user_id = session['user_id']
+            return self.json_response({'user_id': user_id})
+        except Exception as exception:
+            print('---->', exception)
+
         csrf = app.jinja_env.globals['csrf_token']()
-        # print('session:', csrf)
+
 
         if csrf:
-            myresponse = self.json_response(csrf)
-            myresponse.set_cookie('csrf_token', csrf)
+            return Response(
+                self.render_template("superset/csrf_token.json"), mimetype="text/json"
+            )
 
-        if not myresponse:
-            myresponse = self.json_response('not login');
 
-        return myresponse;
+        return self.json_response('not login')
 
     @expose("/login2", methods=["POST"])
     # @safe
