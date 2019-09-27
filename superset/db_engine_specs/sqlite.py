@@ -16,18 +16,22 @@
 # under the License.
 # pylint: disable=C,R,W
 from datetime import datetime
-from typing import List
+from typing import List, TYPE_CHECKING
 
 from sqlalchemy.engine.reflection import Inspector
 
 from superset.db_engine_specs.base import BaseEngineSpec
 from superset.utils import core as utils
 
+if TYPE_CHECKING:
+    # prevent circular imports
+    from superset.models.core import Database
+
 
 class SqliteEngineSpec(BaseEngineSpec):
     engine = "sqlite"
 
-    time_grain_functions = {
+    _time_grain_functions = {
         None: "{col}",
         "PT1S": "DATETIME(STRFTIME('%Y-%m-%dT%H:%M:%S', {col}))",
         "PT1M": "DATETIME(STRFTIME('%Y-%m-%dT%H:%M:00', {col}))",
@@ -79,6 +83,8 @@ class SqliteEngineSpec(BaseEngineSpec):
         return "'{}'".format(iso)
 
     @classmethod
-    def get_table_names(cls, inspector: Inspector, schema: str) -> List[str]:
+    def get_table_names(
+        cls, database: "Database", inspector: Inspector, schema: str
+    ) -> List[str]:
         """Need to disregard the schema for Sqlite"""
         return sorted(inspector.get_table_names())

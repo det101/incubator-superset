@@ -24,12 +24,9 @@ from sqlalchemy.engine.result import RowProxy
 from sqlalchemy.sql import select
 from sqlalchemy.types import String, UnicodeText
 
+from superset import app
 from superset.db_engine_specs import engines
-from superset.db_engine_specs.base import (
-    _create_time_grains_tuple,
-    BaseEngineSpec,
-    builtin_time_grains,
-)
+from superset.db_engine_specs.base import BaseEngineSpec, builtin_time_grains
 from superset.db_engine_specs.bigquery import BigQueryEngineSpec
 from superset.db_engine_specs.hive import HiveEngineSpec
 from superset.db_engine_specs.mssql import MssqlEngineSpec
@@ -38,6 +35,7 @@ from superset.db_engine_specs.oracle import OracleEngineSpec
 from superset.db_engine_specs.pinot import PinotEngineSpec
 from superset.db_engine_specs.postgres import PostgresEngineSpec
 from superset.db_engine_specs.presto import PrestoEngineSpec
+from superset.db_engine_specs.sqlite import SqliteEngineSpec
 from superset.models.core import Database
 from superset.utils.core import get_example_database
 from .base_tests import SupersetTestCase
@@ -139,7 +137,7 @@ class DbEngineSpecsTestCase(SupersetTestCase):
         )
         self.assertEquals(
             (
-                "Error while compiling statement: FAILED: "
+                "hive error: Error while compiling statement: FAILED: "
                 "SemanticException [Error 10001]: Line 4:5 "
                 "Table not found 'fact_ridesfdslakj'"
             ),
@@ -147,7 +145,7 @@ class DbEngineSpecsTestCase(SupersetTestCase):
         )
 
         e = Exception("Some string that doesn't match the regex")
-        self.assertEquals(str(e), HiveEngineSpec.extract_error_message(e))
+        self.assertEquals(f"hive error: {e}", HiveEngineSpec.extract_error_message(e))
 
         msg = (
             "errorCode=10001, "
@@ -155,7 +153,7 @@ class DbEngineSpecsTestCase(SupersetTestCase):
             '=None)"'
         )
         self.assertEquals(
-            ("Error while compiling statement"),
+            ("hive error: Error while compiling statement"),
             HiveEngineSpec.extract_error_message(Exception(msg)),
         )
 
@@ -315,14 +313,21 @@ class DbEngineSpecsTestCase(SupersetTestCase):
         )
 
     def test_time_grain_blacklist(self):
-        blacklist = ["PT1M"]
-        time_grains = {"PT1S": "second", "PT1M": "minute"}
-        time_grain_functions = {"PT1S": "{col}", "PT1M": "{col}"}
-        time_grains = _create_time_grains_tuple(
-            time_grains, time_grain_functions, blacklist
-        )
-        self.assertEqual(1, len(time_grains))
-        self.assertEqual("PT1S", time_grains[0].duration)
+        with app.app_context():
+            app.config["TIME_GRAIN_BLACKLIST"] = ["PT1M"]
+            time_grain_functions = SqliteEngineSpec.get_time_grain_functions()
+            self.assertNotIn("PT1M", time_grain_functions)
+
+    def test_time_grain_addons(self):
+        with app.app_context():
+            app.config["TIME_GRAIN_ADDONS"] = {"PTXM": "x seconds"}
+            app.config["TIME_GRAIN_ADDON_FUNCTIONS"] = {
+                "sqlite": {"PTXM": "ABC({col})"}
+            }
+            time_grains = SqliteEngineSpec.get_time_grains()
+            time_grain_addon = time_grains[-1]
+            self.assertEqual("PTXM", time_grain_addon.duration)
+            self.assertEqual("x seconds", time_grain_addon.label)
 
     def test_engine_time_grain_validity(self):
         time_grains = set(builtin_time_grains.keys())
@@ -330,14 +335,16 @@ class DbEngineSpecsTestCase(SupersetTestCase):
         for engine in engines.values():
             if engine is not BaseEngineSpec:
                 # make sure time grain functions have been defined
-                self.assertGreater(len(engine.time_grain_functions), 0)
-                # make sure that all defined time grains are supported
+                self.assertGreater(len(engine.get_time_grain_functions()), 0)
+                # make sure all defined time grains are supported
                 defined_grains = {grain.duration for grain in engine.get_time_grains()}
                 intersection = time_grains.intersection(defined_grains)
                 self.assertSetEqual(defined_grains, intersection, engine)
 
     def test_presto_get_view_names_return_empty_list(self):
-        self.assertEquals([], PrestoEngineSpec.get_view_names(mock.ANY, mock.ANY))
+        self.assertEquals(
+            [], PrestoEngineSpec.get_view_names(mock.ANY, mock.ANY, mock.ANY)
+        )
 
     def verify_presto_column(self, column, expected_results):
         inspector = mock.Mock()
@@ -648,18 +655,20 @@ class DbEngineSpecsTestCase(SupersetTestCase):
             cols, data
         )
         expected_cols = [
-            {"name": "row_column", "type": "ROW"},
+            {"name": "row_column", "type": "ROW(NESTED_OBJ VARCHAR)"},
             {"name": "row_column.nested_obj", "type": "VARCHAR"},
-            {"name": "array_column", "type": "ARRAY"},
+            {"name": "array_column", "type": "ARRAY(BIGINT)"},
         ]
+
         expected_data = [
-            {"row_column": ["a"], "row_column.nested_obj": "a", "array_column": 1},
-            {"row_column": "", "row_column.nested_obj": "", "array_column": 2},
-            {"row_column": "", "row_column.nested_obj": "", "array_column": 3},
-            {"row_column": ["b"], "row_column.nested_obj": "b", "array_column": 4},
-            {"row_column": "", "row_column.nested_obj": "", "array_column": 5},
-            {"row_column": "", "row_column.nested_obj": "", "array_column": 6},
+            {"array_column": 1, "row_column": ["a"], "row_column.nested_obj": "a"},
+            {"array_column": 2, "row_column": "", "row_column.nested_obj": ""},
+            {"array_column": 3, "row_column": "", "row_column.nested_obj": ""},
+            {"array_column": 4, "row_column": ["b"], "row_column.nested_obj": "b"},
+            {"array_column": 5, "row_column": "", "row_column.nested_obj": ""},
+            {"array_column": 6, "row_column": "", "row_column.nested_obj": ""},
         ]
+
         expected_expanded_cols = [{"name": "row_column.nested_obj", "type": "VARCHAR"}]
         self.assertEqual(actual_cols, expected_cols)
         self.assertEqual(actual_data, expected_data)
@@ -672,7 +681,7 @@ class DbEngineSpecsTestCase(SupersetTestCase):
         cols = [
             {
                 "name": "row_column",
-                "type": "ROW(NESTED_OBJ1 VARCHAR, NESTED_ROW ROW(NESTED_OBJ2 VARCHAR)",
+                "type": "ROW(NESTED_OBJ1 VARCHAR, NESTED_ROW ROW(NESTED_OBJ2 VARCHAR))",
             }
         ]
         data = [{"row_column": ["a1", ["a2"]]}, {"row_column": ["b1", ["b2"]]}]
@@ -680,10 +689,13 @@ class DbEngineSpecsTestCase(SupersetTestCase):
             cols, data
         )
         expected_cols = [
-            {"name": "row_column", "type": "ROW"},
-            {"name": "row_column.nested_obj1", "type": "VARCHAR"},
-            {"name": "row_column.nested_row", "type": "ROW"},
+            {
+                "name": "row_column",
+                "type": "ROW(NESTED_OBJ1 VARCHAR, NESTED_ROW ROW(NESTED_OBJ2 VARCHAR))",
+            },
+            {"name": "row_column.nested_row", "type": "ROW(NESTED_OBJ2 VARCHAR)"},
             {"name": "row_column.nested_row.nested_obj2", "type": "VARCHAR"},
+            {"name": "row_column.nested_obj1", "type": "VARCHAR"},
         ]
         expected_data = [
             {
@@ -699,9 +711,10 @@ class DbEngineSpecsTestCase(SupersetTestCase):
                 "row_column.nested_row.nested_obj2": "b2",
             },
         ]
+
         expected_expanded_cols = [
             {"name": "row_column.nested_obj1", "type": "VARCHAR"},
-            {"name": "row_column.nested_row", "type": "ROW"},
+            {"name": "row_column.nested_row", "type": "ROW(NESTED_OBJ2 VARCHAR)"},
             {"name": "row_column.nested_row.nested_obj2", "type": "VARCHAR"},
         ]
         self.assertEqual(actual_cols, expected_cols)
@@ -728,62 +741,71 @@ class DbEngineSpecsTestCase(SupersetTestCase):
         )
         expected_cols = [
             {"name": "int_column", "type": "BIGINT"},
-            {"name": "array_column", "type": "ARRAY"},
-            {"name": "array_column.nested_array", "type": "ARRAY"},
+            {
+                "name": "array_column",
+                "type": "ARRAY(ROW(NESTED_ARRAY ARRAY(ROW(NESTED_OBJ VARCHAR))))",
+            },
+            {
+                "name": "array_column.nested_array",
+                "type": "ARRAY(ROW(NESTED_OBJ VARCHAR))",
+            },
             {"name": "array_column.nested_array.nested_obj", "type": "VARCHAR"},
         ]
         expected_data = [
             {
-                "int_column": 1,
-                "array_column": [[[["a"], ["b"]]], [[["c"], ["d"]]]],
-                "array_column.nested_array": [["a"], ["b"]],
+                "array_column": [[["a"], ["b"]]],
+                "array_column.nested_array": ["a"],
                 "array_column.nested_array.nested_obj": "a",
+                "int_column": 1,
             },
             {
-                "int_column": "",
                 "array_column": "",
-                "array_column.nested_array": "",
+                "array_column.nested_array": ["b"],
                 "array_column.nested_array.nested_obj": "b",
+                "int_column": "",
             },
             {
-                "int_column": "",
-                "array_column": "",
-                "array_column.nested_array": [["c"], ["d"]],
+                "array_column": [[["c"], ["d"]]],
+                "array_column.nested_array": ["c"],
                 "array_column.nested_array.nested_obj": "c",
+                "int_column": "",
             },
             {
-                "int_column": "",
                 "array_column": "",
-                "array_column.nested_array": "",
+                "array_column.nested_array": ["d"],
                 "array_column.nested_array.nested_obj": "d",
+                "int_column": "",
             },
             {
-                "int_column": 2,
-                "array_column": [[[["e"], ["f"]]], [[["g"], ["h"]]]],
-                "array_column.nested_array": [["e"], ["f"]],
+                "array_column": [[["e"], ["f"]]],
+                "array_column.nested_array": ["e"],
                 "array_column.nested_array.nested_obj": "e",
+                "int_column": 2,
             },
             {
-                "int_column": "",
                 "array_column": "",
-                "array_column.nested_array": "",
+                "array_column.nested_array": ["f"],
                 "array_column.nested_array.nested_obj": "f",
+                "int_column": "",
             },
             {
-                "int_column": "",
-                "array_column": "",
-                "array_column.nested_array": [["g"], ["h"]],
+                "array_column": [[["g"], ["h"]]],
+                "array_column.nested_array": ["g"],
                 "array_column.nested_array.nested_obj": "g",
+                "int_column": "",
             },
             {
-                "int_column": "",
                 "array_column": "",
-                "array_column.nested_array": "",
+                "array_column.nested_array": ["h"],
                 "array_column.nested_array.nested_obj": "h",
+                "int_column": "",
             },
         ]
         expected_expanded_cols = [
-            {"name": "array_column.nested_array", "type": "ARRAY"},
+            {
+                "name": "array_column.nested_array",
+                "type": "ARRAY(ROW(NESTED_OBJ VARCHAR))",
+            },
             {"name": "array_column.nested_array.nested_obj", "type": "VARCHAR"},
         ]
         self.assertEqual(actual_cols, expected_cols)
@@ -796,6 +818,7 @@ class DbEngineSpecsTestCase(SupersetTestCase):
         db.get_extra = mock.Mock(return_value={})
         df = pd.DataFrame({"ds": ["01-01-19"], "hour": [1]})
         db.get_df = mock.Mock(return_value=df)
+        PrestoEngineSpec.get_create_view = mock.Mock(return_value=None)
         result = PrestoEngineSpec.extra_table_metadata(db, "test_table", "test_schema")
         self.assertEqual({"ds": "01-01-19", "hour": 1}, result["partitions"]["latest"])
 
@@ -813,7 +836,9 @@ class DbEngineSpecsTestCase(SupersetTestCase):
         self.assertEqual("SELECT  \nWHERE ds = '01-01-19' AND hour = 1", query_result)
 
     def test_hive_get_view_names_return_empty_list(self):
-        self.assertEquals([], HiveEngineSpec.get_view_names(mock.ANY, mock.ANY))
+        self.assertEquals(
+            [], HiveEngineSpec.get_view_names(mock.ANY, mock.ANY, mock.ANY)
+        )
 
     def test_bigquery_sqla_column_label(self):
         label = BigQueryEngineSpec.make_label_compatible(column("Col").name)
@@ -888,7 +913,7 @@ class DbEngineSpecsTestCase(SupersetTestCase):
         ie. when try_remove_schema_from_table_name == True. """
         base_result_expected = ["table", "table_2"]
         base_result = BaseEngineSpec.get_table_names(
-            schema="schema", inspector=inspector
+            database=mock.ANY, schema="schema", inspector=inspector
         )
         self.assertListEqual(base_result_expected, base_result)
 
@@ -896,7 +921,7 @@ class DbEngineSpecsTestCase(SupersetTestCase):
         ie. when try_remove_schema_from_table_name == False. """
         pg_result_expected = ["schema.table", "table_2", "table_3"]
         pg_result = PostgresEngineSpec.get_table_names(
-            schema="schema", inspector=inspector
+            database=mock.ANY, schema="schema", inspector=inspector
         )
         self.assertListEqual(pg_result_expected, pg_result)
 
