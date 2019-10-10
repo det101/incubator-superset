@@ -23,11 +23,12 @@ import simplejson as json
 from superset import appbuilder, db, event_logger, security_manager
 from superset.common.query_context import QueryContext
 from superset.legacy import update_time_range
-import superset.models.core as models
+# import superset.models.core as models
 from superset.utils import core as utils
 from .base import api, BaseSupersetView, handle_api_exception
 from flask_appbuilder.models.sqla.interface import SQLAInterface
 import superset.models.core as models
+from flask_appbuilder.security.sqla import models as ab_models
 
 class Api(BaseSupersetView):
     @event_logger.log_this
@@ -92,5 +93,29 @@ class ExampleModelApi(ModelRestApi):
     datamodel = SQLAInterface(models.CssTemplate)
     allow_browser_login = True
 
+
+class UserModelApi(ModelRestApi):
+    class_permission_name = "CssTemplateAsyncModelView"
+    method_permission_name = {
+        "get_list": "list",
+        "get": "show",
+        "post": "add",
+        "put": "edit",
+        "delete": "delete",
+        "info": "list",
+    }
+    previous_method_permission_name = {
+        "get_list": "access",
+        "get": "access",
+        "post": "access",
+        "put": "access",
+        "delete": "access",
+        "info": "access"
+    }
+    resource_name = 'test'
+    datamodel = SQLAInterface(ab_models.User)
+    allow_browser_login = True
+
+appbuilder.add_api(UserModelApi);
 appbuilder.add_api(ExampleModelApi)
 appbuilder.add_view_no_menu(Api)
