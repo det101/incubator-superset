@@ -112,20 +112,14 @@ from .utils import (
     get_viz,
 )
 
+from flask_login import login_user, logout_user
+
 from flask_appbuilder.const import (
-    API_SECURITY_PASSWORD_KEY,
-    API_SECURITY_PROVIDER_KEY,
-    API_SECURITY_USERNAME_KEY,
-    API_SECURITY_VERSION,
-    API_SECURITY_ACCESS_TOKEN_KEY,
     API_SECURITY_PASSWORD_KEY,
     API_SECURITY_PROVIDER_DB,
     API_SECURITY_PROVIDER_KEY,
     API_SECURITY_PROVIDER_LDAP,
-    API_SECURITY_REFRESH_KEY,
-    API_SECURITY_REFRESH_TOKEN_KEY,
     API_SECURITY_USERNAME_KEY,
-    API_SECURITY_VERSION,
 )
 
 config = app.config
@@ -756,32 +750,27 @@ class Superset(BaseSupersetView):
 
         try:
             user_id = session['user_id']
-            return self.json_response({'user_id': user_id})
+            return self.json_response({'userId': user_id})
         except Exception as exception:
             print('---->', exception)
 
-        csrf = app.jinja_env.globals['csr:f_token']()
+        return Response(
+            self.render_template("superset/csrf_token.json"), mimetype="text/json"
+        )
 
-
-        if csrf:
-            return Response(
-                self.render_template("superset/csrf_token.json"), mimetype="text/json"
-            )
-
-
-        return self.json_response('not login')
+        # return self.json_response('not login')
 
     @expose("/login2", methods=["POST"])
-    # @safe
+    @safe
     def login(self):
         if not request.is_json:
             return self.json_response(message="Request payload is not JSON")
         username = request.json.get(API_SECURITY_USERNAME_KEY, None)
         password = request.json.get(API_SECURITY_PASSWORD_KEY, None)
         provider = request.json.get(API_SECURITY_PROVIDER_KEY, None)
-        refresh = request.json.get(API_SECURITY_REFRESH_KEY, False)
-        if not username or not password or not provider:
-            return self.json_response(message="Missing required parameter")
+        # refresh = request.json.get(API_SECURITY_REFRESH_KEY, False)
+        if not username or not password:
+            return self.json_response("Missing required parameter")
         # AUTH
         if provider == API_SECURITY_PROVIDER_DB:
             user = self.appbuilder.sm.auth_user_db(username, password)
@@ -803,7 +792,10 @@ class Superset(BaseSupersetView):
         #     resp[API_SECURITY_REFRESH_TOKEN_KEY] = create_refresh_token(
         #         identity=user.id
         #     )
-        return self.json_response('success')
+
+        # 设置登陆状态
+        login_user(user, False)
+        return self.json_response({'userId': user.id})
 
 
 
